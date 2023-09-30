@@ -82,8 +82,6 @@ fun Moodie(modifier: Modifier = Modifier) {
         FloatingActionButton(onClick = {
             // Make the web request here
             val request = SentimentRequest(userInput)
-            println("Get prediction")
-            Log.d("ServerResponse", "Get predictíon")
             GlobalScope.launch(Dispatchers.IO) {
                 try {
                     val response = sentimentService.predictSentiment(request)
