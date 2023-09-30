@@ -6,12 +6,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -73,6 +77,7 @@ class MainActivity : ComponentActivity() {
 fun Moodie(modifier: Modifier = Modifier) {
     var userInput by remember { mutableStateOf("") }
     var result by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     val retrofit = Retrofit.Builder()
         .baseUrl("http://192.168.0.144:5000/").addConverterFactory(GsonConverterFactory.create())
@@ -80,19 +85,21 @@ fun Moodie(modifier: Modifier = Modifier) {
     val sentimentService = retrofit.create(SentimentService::class.java)
     Scaffold(floatingActionButton = {
         FloatingActionButton(onClick = {
-            // Make the web request here
+            isLoading = true
+
             val request = SentimentRequest(userInput)
             GlobalScope.launch(Dispatchers.IO) {
                 try {
                     val response = sentimentService.predictSentiment(request)
-                    val label = response.result.label
-                    result = label
+                    result = response.result.label
                     val score = response.result.score
 
                     // Log the response
-                    Log.d("ServerResponse", "Label: $label, Score: $score")
+                    Log.d("ServerResponse", "Label: $result, Score: $score")
                 } catch (e: Exception) {
                     Log.e("ServerRequest", "Request failed: ${e.message}", e)
+                } finally {
+                    isLoading = false
                 }
             }
 
@@ -108,17 +115,32 @@ fun Moodie(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Image(
-                painter = painterResource(id = mapLabelToEmotion(result)),
-                contentDescription = null,
-                modifier = Modifier.size(200.dp)
-            )
+            Box(
+                modifier = Modifier.size(200.dp),
+            ) {
+                Image(
+                    painter = painterResource(id = mapLabelToEmotion(result)),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
             TextField(
                 value = userInput,
                 onValueChange = { userInput = it },
                 label = { Text("Enter text") }
             )
-            Text(text = result)
+            Box(modifier = Modifier.size(200.dp)) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center)
+                    )
+                } else {
+                    Text(text = result, modifier = Modifier.align(Alignment.Center))
+                }
+            }
         }
     }
 }
