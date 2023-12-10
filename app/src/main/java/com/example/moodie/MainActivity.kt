@@ -1,9 +1,15 @@
 package com.example.moodie
 
+import android.Manifest
+import android.app.Application
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButton
@@ -25,6 +32,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +65,7 @@ interface SentimentService {
 }
 
 class MainActivity : ComponentActivity() {
+    val voiceToTextParser by lazy { VoiceToTextParser(application) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -65,16 +75,30 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    Moodie()
+                    var canRecord by remember {
+                        mutableStateOf(false)
+                    }
+                    val recordAudioLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.RequestPermission(),
+                        onResult = { isGranted -> canRecord = isGranted }
+                    )
+
+                    LaunchedEffect(key1 = recordAudioLauncher) {
+                        recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
+                    Moodie(voiceToTextParser)
                 }
             }
         }
     }
 }
 
-@OptIn(DelicateCoroutinesApi::class)
+@OptIn(DelicateCoroutinesApi::class, ExperimentalAnimationApi::class)
 @Composable
-fun Moodie(modifier: Modifier = Modifier) {
+fun Moodie(
+    voiceToTextParser: VoiceToTextParser,
+    modifier: Modifier = Modifier
+) {
     var userInput by remember { mutableStateOf("") }
     var result by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
@@ -83,11 +107,12 @@ fun Moodie(modifier: Modifier = Modifier) {
         .baseUrl("http://192.168.0.144:5000/").addConverterFactory(GsonConverterFactory.create())
         .build()
     val sentimentService = retrofit.create(SentimentService::class.java)
+    val state by voiceToTextParser.state.collectAsState()
     Scaffold(floatingActionButton = {
         FloatingActionButton(onClick = {
             isLoading = true
 
-            val request = SentimentRequest(userInput)
+            val request = SentimentRequest(state.spokenText)
             GlobalScope.launch(Dispatchers.IO) {
                 try {
                     val response = sentimentService.predictSentiment(request)
@@ -102,8 +127,6 @@ fun Moodie(modifier: Modifier = Modifier) {
                     isLoading = false
                 }
             }
-
-
         }) {
             Icon(imageVector = Icons.Rounded.PlayArrow, contentDescription = null)
         }
@@ -125,6 +148,28 @@ fun Moodie(modifier: Modifier = Modifier) {
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = {
+                if (state.isSpeaking) {
+                    voiceToTextParser.stopListening()
+                } else {
+                    voiceToTextParser.startListening("en")
+                }
+            }) {
+                Text(text = "click to speak")
+            }
+            AnimatedContent(targetState = state.isSpeaking, label = "") { isSpeaking ->
+                if (isSpeaking) {
+                    Text(
+                        text = "Speak...",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                } else {
+                    Text(
+                        text = state.spokenText.ifEmpty { "Click on record" },
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+            }
             TextField(
                 value = userInput,
                 onValueChange = { userInput = it },
@@ -159,6 +204,7 @@ fun mapLabelToEmotion(label: String): Int {
 @Composable
 fun MoodiePreview() {
     MoodieTheme {
-        Moodie()
+        val voiceToTextParser by lazy { VoiceToTextParser(Application()) }
+        Moodie(voiceToTextParser)
     }
 }
